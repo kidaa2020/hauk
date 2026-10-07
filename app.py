@@ -8,16 +8,22 @@ import json
 import threading
 import datetime
 import glob
-import io
 from contextlib import redirect_stdout
 
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 
-# Patch print so all module output is captured and streamed
-app = Flask(__name__)
+# Absolute paths so Flask finds templates/static regardless of CWD
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, "templates"),
+    static_folder=os.path.join(BASE_DIR, "static"),
+)
 app.config["SECRET_KEY"] = os.urandom(24).hex()
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+# threading mode: no eventlet/gevent needed
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # Active scan state
 scan_state = {
