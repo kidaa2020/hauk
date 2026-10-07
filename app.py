@@ -261,20 +261,60 @@ function renderSecrets(){
   if(!list.length){tb.innerHTML='<tr><td colspan="5" class="empty">'+(all.length?"No match":"No secrets found")+'</td></tr>';return;}
   tb.innerHTML=list.map(s=>'<tr><td><span class="badge badge-'+s.severity+'">'+s.severity+'</span></td><td>'+esc(s.pattern)+'</td><td class="mono">'+esc(s.match.substring(0,120))+'</td><td class="mono">'+esc(bn(s.file))+'</td><td>'+s.line+'</td></tr>').join("");
 }
+// Type badge colors
+const TYPE_COLORS={
+  "Admin":"#ff4444","API":"#58a6ff","Auth":"#f0883e","Dev/Stage":"#e3b341",
+  "Git/CI":"#bc8cff","Monitoring":"#39c5cf","Mail":"#3fb950","Database":"#ff4444",
+  "CDN/Media":"#8b949e","VPN/Remote":"#f0883e","Shop":"#3fb950","Mobile":"#58a6ff",
+  "Docs":"#8b949e","Web":"#3fb950","Unknown":"#8b949e"
+};
+function typeBadge(t){const c=TYPE_COLORS[t]||"#8b949e";return'<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;background:'+c+'22;color:'+c+';border:1px solid '+c+'55">'+esc(t||"Web")+'</span>';}
+
+function buildTypeFilters(){
+  const all=state.results.subdomains||[];
+  const types=[...new Set(all.map(s=>s.type||"Web"))].sort();
+  const el=document.getElementById("type-filters");
+  if(!el)return;
+  el.innerHTML='<button class="chip active" data-type="all" onclick="filterByType(this)">All ('+all.length+')</button>'
+    +types.map(t=>{const n=all.filter(s=>(s.type||"Web")===t).length;return'<button class="chip" data-type="'+esc(t)+'" onclick="filterByType(this)">'+esc(t)+' ('+n+')</button>';}).join("");
+}
+function filterByType(btn){
+  document.querySelectorAll("#type-filters .chip").forEach(c=>c.classList.remove("active"));
+  btn.classList.add("active");
+  state.typeFilter=btn.dataset.type;
+  renderSubdomains();
+}
 function renderSubdomains(){
   const all=state.results.subdomains||[];
+  buildTypeFilters();
   const ao=document.getElementById("chk-alive-only")?.checked;
-  const list=ao?all.filter(s=>s.alive):all;
+  const tf=state.typeFilter||"all";
+  let list=ao?all.filter(s=>s.alive):all;
+  if(tf!=="all")list=list.filter(s=>(s.type||"Web")===tf);
   const tb=document.getElementById("body-subdomains");
-  if(!list.length){tb.innerHTML='<tr><td colspan="4" class="empty">No subdomains found</td></tr>';return;}
-  tb.innerHTML=list.map(s=>'<tr><td>'+esc(s.host)+'</td><td><span class="status-'+Math.floor((s.status||0)/100)+'">'+(s.status||"-")+'</span></td><td class="mono">'+esc(s.ip||"")+'</td><td><a href="'+esc(s.url)+'" target="_blank">'+esc(s.url)+'</a></td></tr>').join("");
+  if(!list.length){tb.innerHTML='<tr><td colspan="6" class="empty">No subdomains found</td></tr>';return;}
+  tb.innerHTML=list.map(s=>'<tr>'
+    +'<td>'+typeBadge(s.type||"Web")+'</td>'
+    +'<td><a href="'+esc(s.url)+'" target="_blank" class="mono">'+esc(s.host)+'</a></td>'
+    +'<td><span class="status-'+Math.floor((s.status||0)/100)+'">'+(s.status||"-")+'</span></td>'
+    +'<td class="mono" style="font-size:11px;color:var(--muted)">'+esc(s.ip||"")+'</td>'
+    +'<td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.title||"")+'</td>'
+    +'<td class="mono" style="font-size:11px;color:var(--muted)">'+esc(s.webserver||"")+'</td>'
+    +'</tr>').join("");
 }
 function renderFuzz(){
   const list=state.results.fuzz||[];
   const tb=document.getElementById("body-fuzz");
-  if(!list.length){tb.innerHTML='<tr><td colspan="4" class="empty">No paths found</td></tr>';return;}
-  tb.innerHTML=list.map(h=>'<tr><td><a href="'+esc(h.url)+'" target="_blank" class="mono">'+esc(h.url)+'</a></td><td><span class="status-'+Math.floor(h.status/100)+'">'+h.status+'</span></td><td>'+(h.size||"-")+'</td><td class="mono">'+esc(h.content_type||"")+'</td></tr>').join("");
+  if(!list.length){tb.innerHTML='<tr><td colspan="5" class="empty">No paths found — check if the target uses HTTP (not HTTPS)</td></tr>';return;}
+  tb.innerHTML=list.map(h=>'<tr>'
+    +'<td><a href="'+esc(h.url)+'" target="_blank" class="mono" style="font-size:12px">'+esc(h.url)+'</a></td>'
+    +'<td><span class="status-'+Math.floor(h.status/100)+'">'+h.status+'</span></td>'
+    +'<td style="color:var(--muted)">'+fmtSize(h.size)+'</td>'
+    +'<td class="mono" style="font-size:11px;color:var(--muted)">'+esc((h.content_type||"").split(";")[0])+'</td>'
+    +'<td class="mono" style="font-size:11px;color:var(--muted)">'+esc(h.server||"")+'</td>'
+    +'</tr>').join("");
 }
+function fmtSize(n){if(!n)return"-";if(n>1048576)return(n/1048576).toFixed(1)+"MB";if(n>1024)return(n/1024).toFixed(1)+"KB";return n+"B";}
 function renderPorts(){
   const ports=state.results.ports||{};const tb=document.getElementById("body-ports");const rows=[];
   for(const[host,ps]of Object.entries(ports))for(const p of ps)rows.push('<tr><td class="mono">'+esc(host)+'</td><td><strong>'+p.port+'</strong></td><td>'+esc(p.service)+'</td><td class="mono">'+esc((p.banner||"").substring(0,80))+'</td></tr>');
@@ -402,12 +442,16 @@ HTML = """<!DOCTYPE html>
         <div class="table-wrap"><table id="tbl-secrets"><thead><tr><th>Severity</th><th>Type</th><th>Match</th><th>File</th><th>Line</th></tr></thead><tbody id="body-secrets"><tr><td colspan="5" class="empty">No scan data yet</td></tr></tbody></table></div>
       </div>
       <div id="tab-subdomains" class="tab-content">
-        <div class="table-controls"><input class="search-box" placeholder="Filter subdomains..." oninput="filterTable('tbl-subdomains',this.value)"><label class="toggle-filter"><input type="checkbox" id="chk-alive-only" onchange="renderSubdomains()"> Alive only</label></div>
-        <div class="table-wrap"><table id="tbl-subdomains"><thead><tr><th>Host</th><th>Status</th><th>IP</th><th>URL</th></tr></thead><tbody id="body-subdomains"><tr><td colspan="4" class="empty">No scan data yet</td></tr></tbody></table></div>
+        <div class="table-controls">
+          <input class="search-box" placeholder="Filter subdomains..." oninput="filterTable('tbl-subdomains',this.value)">
+          <label class="toggle-filter"><input type="checkbox" id="chk-alive-only" onchange="renderSubdomains()"> Alive only</label>
+        </div>
+        <div class="filter-chips" id="type-filters" style="margin-bottom:10px"></div>
+        <div class="table-wrap"><table id="tbl-subdomains"><thead><tr><th>Type</th><th>Host</th><th>Status</th><th>IP</th><th>Title</th><th>Server</th></tr></thead><tbody id="body-subdomains"><tr><td colspan="6" class="empty">No scan data yet</td></tr></tbody></table></div>
       </div>
       <div id="tab-fuzz" class="tab-content">
         <div class="table-controls"><input class="search-box" placeholder="Filter paths..." oninput="filterTable('tbl-fuzz',this.value)"></div>
-        <div class="table-wrap"><table id="tbl-fuzz"><thead><tr><th>URL</th><th>Status</th><th>Size</th><th>Content-Type</th></tr></thead><tbody id="body-fuzz"><tr><td colspan="4" class="empty">No scan data yet</td></tr></tbody></table></div>
+        <div class="table-wrap"><table id="tbl-fuzz"><thead><tr><th>URL</th><th>Status</th><th>Size</th><th>Content-Type</th><th>Server</th></tr></thead><tbody id="body-fuzz"><tr><td colspan="5" class="empty">No scan data yet</td></tr></tbody></table></div>
       </div>
       <div id="tab-ports" class="tab-content">
         <div class="table-wrap"><table id="tbl-ports"><thead><tr><th>Host</th><th>Port</th><th>Service</th><th>Banner</th></tr></thead><tbody id="body-ports"><tr><td colspan="4" class="empty">No scan data yet</td></tr></tbody></table></div>
