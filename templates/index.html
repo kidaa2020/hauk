@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ReconHawk</title>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+
+<!-- ── SIDEBAR ── -->
+<nav class="sidebar">
+  <div class="logo">
+    <span class="logo-icon">🦅</span>
+    <span class="logo-text">ReconHawk</span>
+  </div>
+  <ul class="nav-links">
+    <li><a href="#" class="nav-link active" data-view="scan"><span class="icon">⚡</span> New Scan</a></li>
+    <li><a href="#" class="nav-link" data-view="results"><span class="icon">📊</span> Results</a></li>
+    <li><a href="#" class="nav-link" data-view="history"><span class="icon">📁</span> History</a></li>
+  </ul>
+  <div class="sidebar-footer">
+    <div id="status-dot" class="status-dot idle"></div>
+    <span id="status-text">Idle</span>
+  </div>
+</nav>
+
+<!-- ── MAIN ── -->
+<main class="main">
+
+  <!-- ══ VIEW: SCAN ══ -->
+  <div id="view-scan" class="view active">
+    <div class="page-header">
+      <h1>New Scan</h1>
+      <p class="sub">Configure and launch a recon session</p>
+    </div>
+
+    <div class="scan-layout">
+      <!-- Config panel -->
+      <div class="config-panel">
+        <div class="card">
+          <div class="card-title">🎯 Target</div>
+          <div class="field">
+            <label>Domain</label>
+            <input id="inp-domain" type="text" placeholder="example.com" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Output Dir</label>
+              <input id="inp-output" type="text" placeholder="reports/example.com">
+            </div>
+            <div class="field">
+              <label>Threads</label>
+              <input id="inp-threads" type="number" value="50" min="1" max="500">
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Timeout (s)</label>
+              <input id="inp-timeout" type="number" value="10" min="1" max="60">
+            </div>
+            <div class="field">
+              <label>Crawl Depth</label>
+              <input id="inp-depth" type="number" value="2" min="1" max="5">
+            </div>
+          </div>
+          <div class="field">
+            <label>Custom Wordlist (path)</label>
+            <input id="inp-wordlist" type="text" placeholder="/usr/share/wordlists/dirb/common.txt">
+          </div>
+          <div class="field">
+            <label>Ports</label>
+            <input id="inp-ports" type="text" value="21,22,25,53,80,443,445,3306,3389,5432,6379,8080,8443,8888,9200,27017">
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">⚙️ Modules</div>
+          <div class="module-grid">
+            <label class="toggle-card active" data-mod="subdomains">
+              <input type="checkbox" checked> <span class="mod-icon">🌐</span>
+              <span class="mod-name">Subdomains</span>
+              <span class="mod-desc">OSINT + DNS brute-force</span>
+              <div class="toggle-check">✓</div>
+            </label>
+            <label class="toggle-card active" data-mod="ports">
+              <input type="checkbox" checked> <span class="mod-icon">🔌</span>
+              <span class="mod-name">Port Scan</span>
+              <span class="mod-desc">Banner grabbing</span>
+              <div class="toggle-check">✓</div>
+            </label>
+            <label class="toggle-card active" data-mod="fuzz">
+              <input type="checkbox" checked> <span class="mod-icon">📂</span>
+              <span class="mod-name">Dir Fuzzing</span>
+              <span class="mod-desc">150+ sensitive paths</span>
+              <div class="toggle-check">✓</div>
+            </label>
+            <label class="toggle-card active" data-mod="scrape">
+              <input type="checkbox" checked> <span class="mod-icon">🕷️</span>
+              <span class="mod-name">Scraper</span>
+              <span class="mod-desc">HTML + JS download</span>
+              <div class="toggle-check">✓</div>
+            </label>
+            <label class="toggle-card active" data-mod="secrets">
+              <input type="checkbox" checked> <span class="mod-icon">🔐</span>
+              <span class="mod-name">Secret Hunt</span>
+              <span class="mod-desc">35+ leak patterns</span>
+              <div class="toggle-check">✓</div>
+            </label>
+            <label class="toggle-card" data-mod="passive" id="toggle-passive">
+              <input type="checkbox"> <span class="mod-icon">👻</span>
+              <span class="mod-name">Passive Only</span>
+              <span class="mod-desc">No active probing</span>
+              <div class="toggle-check">✓</div>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">📄 Report Format</div>
+          <div class="format-btns">
+            <button class="fmt-btn active" data-fmt="both">Both</button>
+            <button class="fmt-btn" data-fmt="html">HTML</button>
+            <button class="fmt-btn" data-fmt="json">JSON</button>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button id="btn-start" class="btn-primary" onclick="startScan()">
+            <span>▶ Launch Scan</span>
+          </button>
+          <button id="btn-stop" class="btn-danger hidden" onclick="stopScan()">
+            <span>⏹ Stop</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Terminal panel -->
+      <div class="terminal-panel">
+        <div class="terminal-header">
+          <span class="term-title">Terminal Output</span>
+          <div class="term-controls">
+            <span id="scan-timer" class="scan-timer"></span>
+            <button class="btn-ghost" onclick="clearTerminal()">Clear</button>
+          </div>
+        </div>
+        <div id="terminal" class="terminal">
+          <div class="term-welcome">
+            <pre>  ____                      _   _               _    
+ |  _ \ ___  ___ ___  _ __ | | | | __ ___      | | __
+ | |_) / _ \/ __/ _ \| '_ \| |_| |/ _` \ \ /\ / |/ /
+ |  _ &lt;  __/ (_| (_) | | | |  _  | (_| |\ V  V /|   &lt; 
+ |_| \_\___|\___\___/|_| |_|_| |_|\__,_| \_/\_/ |_|\_\</pre>
+            <p>Configure your target and launch a scan →</p>
+          </div>
+        </div>
+        <!-- Progress bar -->
+        <div id="progress-bar" class="progress-bar hidden">
+          <div id="progress-fill" class="progress-fill"></div>
+          <span id="progress-label" class="progress-label">Scanning...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ VIEW: RESULTS ══ -->
+  <div id="view-results" class="view">
+    <div class="page-header">
+      <h1>Results <span id="res-domain" class="domain-badge"></span></h1>
+      <div class="header-actions">
+        <button class="btn-ghost" onclick="refreshResults()">↻ Refresh</button>
+        <a id="link-html-report" href="#" target="_blank" class="btn-ghost hidden">📄 Open Report</a>
+      </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div id="summary-cards" class="summary-grid"></div>
+
+    <!-- Result tabs -->
+    <div class="tabs-container">
+      <div class="tabs">
+        <button class="tab active" data-tab="secrets">🔐 Secrets</button>
+        <button class="tab" data-tab="subdomains">🌐 Subdomains</button>
+        <button class="tab" data-tab="fuzz">📂 Fuzzing</button>
+        <button class="tab" data-tab="ports">🔌 Ports</button>
+        <button class="tab" data-tab="endpoints">🔗 Endpoints</button>
+      </div>
+
+      <!-- Secrets tab -->
+      <div id="tab-secrets" class="tab-content active">
+        <div class="table-controls">
+          <input class="search-box" placeholder="Filter secrets..." oninput="filterTable('tbl-secrets', this.value)">
+          <div class="filter-chips" id="sev-filters">
+            <button class="chip active" data-sev="all">All</button>
+            <button class="chip critical" data-sev="critical">Critical</button>
+            <button class="chip high" data-sev="high">High</button>
+            <button class="chip medium" data-sev="medium">Medium</button>
+            <button class="chip low" data-sev="low">Low</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="tbl-secrets">
+            <thead><tr><th>Severity</th><th>Type</th><th>Match</th><th>File</th><th>Line</th></tr></thead>
+            <tbody id="body-secrets"><tr><td colspan="5" class="empty">No scan data yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Subdomains tab -->
+      <div id="tab-subdomains" class="tab-content">
+        <div class="table-controls">
+          <input class="search-box" placeholder="Filter subdomains..." oninput="filterTable('tbl-subdomains', this.value)">
+          <label class="toggle-filter"><input type="checkbox" id="chk-alive-only" onchange="renderSubdomains()"> Alive only</label>
+        </div>
+        <div class="table-wrap">
+          <table id="tbl-subdomains">
+            <thead><tr><th>Host</th><th>Status</th><th>IP</th><th>URL</th></tr></thead>
+            <tbody id="body-subdomains"><tr><td colspan="4" class="empty">No scan data yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Fuzzing tab -->
+      <div id="tab-fuzz" class="tab-content">
+        <div class="table-controls">
+          <input class="search-box" placeholder="Filter paths..." oninput="filterTable('tbl-fuzz', this.value)">
+        </div>
+        <div class="table-wrap">
+          <table id="tbl-fuzz">
+            <thead><tr><th>URL</th><th>Status</th><th>Size</th><th>Content-Type</th></tr></thead>
+            <tbody id="body-fuzz"><tr><td colspan="4" class="empty">No scan data yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Ports tab -->
+      <div id="tab-ports" class="tab-content">
+        <div class="table-wrap">
+          <table id="tbl-ports">
+            <thead><tr><th>Host</th><th>Port</th><th>Service</th><th>Banner</th></tr></thead>
+            <tbody id="body-ports"><tr><td colspan="4" class="empty">No scan data yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Endpoints tab -->
+      <div id="tab-endpoints" class="tab-content">
+        <div class="table-controls">
+          <input class="search-box" placeholder="Filter endpoints..." oninput="filterTable('tbl-endpoints', this.value)">
+        </div>
+        <div class="table-wrap">
+          <table id="tbl-endpoints">
+            <thead><tr><th>Endpoint</th><th>Source</th></tr></thead>
+            <tbody id="body-endpoints"><tr><td colspan="2" class="empty">No scan data yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ VIEW: HISTORY ══ -->
+  <div id="view-history" class="view">
+    <div class="page-header">
+      <h1>Scan History</h1>
+      <button class="btn-ghost" onclick="loadHistory()">↻ Refresh</button>
+    </div>
+    <div class="table-wrap">
+      <table id="tbl-history">
+        <thead><tr><th>Domain</th><th>Date</th><th>Subdomains</th><th>Secrets</th><th>Actions</th></tr></thead>
+        <tbody id="body-history"><tr><td colspan="5" class="empty">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<!-- ── TOAST ── -->
+<div id="toast-container"></div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
